@@ -488,6 +488,31 @@
   }
   .lyric-row { color: var(--ink); }
 
+  .seg {
+    display: flex;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .seg button {
+    background: var(--paper);
+    border: none;
+    color: var(--ink-soft);
+    font-size: 12.5px;
+    padding: 6px 11px;
+  }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button.active { background: var(--amber-deep); color: var(--paper-raised); }
+  .seg button:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+
+  .chart.lyrics-only { font-family: var(--font-display); }
+  .chart.lyrics-only .lyric-row {
+    white-space: pre-wrap;
+    font-size: calc(var(--lyric-size) * 1.2);
+    line-height: 1.65;
+  }
+  .chart.lyrics-only .section-label { font-size: 12.5px; }
+
   .chord-tag {
     all: unset;
     font-family: inherit;
@@ -736,6 +761,7 @@
 
   var THEME_KEY = "songbook:theme";
   var FONT_KEY = "songbook:fontsize";
+  var CHORDS_KEY = "songbook:showchords";
   var CACHE_KEY = "songbook:cache";
   var PENDING_KEY = "songbook:pending";
 
@@ -805,6 +831,7 @@
     mode: "view", // view | edit
     transpose: 0,
     fontSize: 16,
+    showChords: true,
     editingDraft: null,
     confirmDeleteId: null,
     loading: true,
@@ -1019,6 +1046,9 @@
       var fs = parseFloat(window.localStorage.getItem(FONT_KEY));
       if (fs && fs >= 12 && fs <= 28) state.fontSize = fs;
     } catch (e) {}
+    try {
+      if (window.localStorage.getItem(CHORDS_KEY) === "off") state.showChords = false;
+    } catch (e) {}
   }
 
   function savePrefs() {
@@ -1026,6 +1056,7 @@
       var theme = document.documentElement.getAttribute("data-theme") || "";
       window.localStorage.setItem(THEME_KEY, theme);
       window.localStorage.setItem(FONT_KEY, String(state.fontSize));
+      window.localStorage.setItem(CHORDS_KEY, state.showChords ? "on" : "off");
     } catch (e) {}
   }
 
@@ -1442,6 +1473,28 @@
     // Toolbar
     var toolbar = el("div", "toolbar");
 
+    var viewGroup = el("div", "tool-group");
+    viewGroup.appendChild(el("span", "tool-label", "View"));
+    var seg = el("div", "seg");
+    var withChordsBtn = el("button", state.showChords ? "active" : "", "Chords");
+    withChordsBtn.setAttribute("aria-pressed", state.showChords ? "true" : "false");
+    withChordsBtn.addEventListener("click", function () {
+      state.showChords = true;
+      savePrefs();
+      renderStage();
+    });
+    var lyricsOnlyBtn = el("button", state.showChords ? "" : "active", "Lyrics only");
+    lyricsOnlyBtn.setAttribute("aria-pressed", state.showChords ? "false" : "true");
+    lyricsOnlyBtn.addEventListener("click", function () {
+      state.showChords = false;
+      savePrefs();
+      renderStage();
+    });
+    seg.appendChild(withChordsBtn);
+    seg.appendChild(lyricsOnlyBtn);
+    viewGroup.appendChild(seg);
+    toolbar.appendChild(viewGroup);
+
     var transposeGroup = el("div", "tool-group");
     transposeGroup.appendChild(el("span", "tool-label", "Transpose"));
     var minusBtn = el("button", "step-btn", "\u2212");
@@ -1454,7 +1507,7 @@
     transposeGroup.appendChild(minusBtn);
     transposeGroup.appendChild(readout);
     transposeGroup.appendChild(plusBtn);
-    toolbar.appendChild(transposeGroup);
+    if (state.showChords) toolbar.appendChild(transposeGroup);
 
     var fontGroup = el("div", "tool-group");
     fontGroup.appendChild(el("span", "tool-label", "Text size"));
@@ -1508,7 +1561,7 @@
     stageEl.appendChild(toolbar);
 
     // Chart
-    var chart = el("div", "chart");
+    var chart = el("div", "chart" + (state.showChords ? "" : " lyrics-only"));
     var lines = (song.body || "").split("\n");
     lines.forEach(function (raw) {
       var trimmed = raw.trim();
@@ -1521,8 +1574,9 @@
         return;
       }
       var built = buildLine(raw, state.transpose);
+      if (!state.showChords && built.lyric.trim() === "") return; // chord-only line (intro, solo)
       var lineWrap = el("div", "line");
-      if (built.hasChords) {
+      if (state.showChords && built.hasChords) {
         var chordRow = el("div", "chord-row");
         built.segments.forEach(function (seg) {
           if (seg.gap > 0) chordRow.appendChild(document.createTextNode(" ".repeat(seg.gap)));
