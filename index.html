@@ -513,6 +513,48 @@
   }
   .chart.lyrics-only .section-label { font-size: 12.5px; }
 
+  .sidebar-tabs { margin: 0 0 12px; }
+  .sidebar-tabs button { flex: 1; }
+
+  .list-row { display: flex; align-items: stretch; }
+  .list-row .song-card { flex: 1; min-width: 0; }
+  .row-tools { display: flex; align-items: center; gap: 2px; padding-right: 10px; }
+  .row-tools button {
+    background: none; border: none; color: var(--ink-faint);
+    font-size: 15px; padding: 6px 7px; border-radius: 3px;
+  }
+  .row-tools button:hover { color: var(--amber-deep); }
+  .row-tools button:disabled { opacity: 0.3; cursor: default; }
+  .row-tools button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+
+  .list-head { padding: 12px 16px 8px; display: flex; flex-direction: column; gap: 8px; }
+  .list-name-input {
+    width: 100%; background: var(--paper); border: 1px solid var(--rule);
+    border-radius: 3px; padding: 8px 10px; font-size: 16px;
+    font-family: var(--font-display); color: var(--ink);
+  }
+  .list-name-input:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+  .list-foot { padding: 12px 16px 4px; }
+
+  .list-nav {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 16px; font-size: 13px; color: var(--ink-soft);
+  }
+  .list-nav .step-btn { width: auto; padding: 0 11px; font-size: 13px; }
+  .list-nav .step-btn:disabled { opacity: 0.35; cursor: default; }
+
+  .check-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 2px;
+    font-size: 15px; border-bottom: 1px solid var(--rule); cursor: pointer;
+  }
+  .check-row input { width: 18px; height: 18px; accent-color: var(--amber-deep); }
+  .new-list-row { display: flex; gap: 8px; margin-top: 4px; }
+  .new-list-row input {
+    flex: 1; min-width: 0; background: var(--paper); border: 1px solid var(--rule);
+    border-radius: 3px; padding: 9px 10px; font-size: 15px; color: var(--ink);
+  }
+  .new-list-row input:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+
   .chord-tag {
     all: unset;
     font-family: inherit;
@@ -720,10 +762,15 @@
         <span class="name">Songbook</span>
         <button class="close-drawer" id="closeDrawer" aria-label="Close song list">&times;</button>
       </div>
-      <div class="search-row">
+      <div class="seg sidebar-tabs" id="sidebarTabs">
+        <button id="tabSongs" class="active">Songs</button>
+        <button id="tabLists">My lists</button>
+      </div>
+      <div class="search-row" id="searchRow">
         <input type="text" id="searchInput" placeholder="Search songs or artists" autocomplete="off">
       </div>
       <button class="new-song-btn" id="newSongBtn">+ New song</button>
+      <button class="new-song-btn" id="newListBtn" style="display:none;">+ New list</button>
     </div>
     <nav class="song-list" id="songList"></nav>
     <div class="sync-status" id="syncStatus" style="display:none;"></div>
@@ -745,6 +792,16 @@
 
 </div>
 
+<div class="modal-scrim" id="listModalScrim">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="listModalTitle">
+    <div class="modal-head">
+      <h2 id="listModalTitle">Add to list</h2>
+      <button class="modal-close" id="listModalClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body" id="listModalBody"></div>
+  </div>
+</div>
+
 <div class="modal-scrim" id="chordModalScrim">
   <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="chordModalTitle">
     <div class="modal-head">
@@ -762,6 +819,7 @@
   var THEME_KEY = "songbook:theme";
   var FONT_KEY = "songbook:fontsize";
   var CHORDS_KEY = "songbook:showchords";
+  var LISTS_KEY = "songbook:lists";
   var CACHE_KEY = "songbook:cache";
   var PENDING_KEY = "songbook:pending";
 
@@ -832,6 +890,11 @@
     transpose: 0,
     fontSize: 16,
     showChords: true,
+    sidebarTab: "songs",
+    lists: [],
+    activeListId: null,
+    confirmDeleteListId: null,
+    listModalSongId: null,
     editingDraft: null,
     confirmDeleteId: null,
     loading: true,
@@ -1390,7 +1453,7 @@
     return e;
   }
 
-  function renderSongList() {
+  function renderSongsTab() {
     var query = (document.getElementById("searchInput").value || "").toLowerCase().trim();
     songListEl.innerHTML = "";
     var filtered = state.songs.filter(function (s) {
@@ -1470,6 +1533,26 @@
       stageEl.appendChild(tagRow);
     }
 
+    // Prev / next when browsing a list
+    var navList = state.activeListId ? getList(state.activeListId) : null;
+    if (navList) {
+      var navIds = listSongIds(navList);
+      var navPos = navIds.indexOf(song.id);
+      if (navPos !== -1) {
+        var nav = el("div", "list-nav");
+        nav.appendChild(el("span", null, (navList.name || "List") + " \u2014 " + (navPos + 1) + " of " + navIds.length));
+        var prevBtn = el("button", "step-btn", "\u2039 Prev");
+        prevBtn.disabled = navPos === 0;
+        prevBtn.addEventListener("click", function () { selectSong(navIds[navPos - 1]); });
+        var nextBtn = el("button", "step-btn", "Next \u203a");
+        nextBtn.disabled = navPos === navIds.length - 1;
+        nextBtn.addEventListener("click", function () { selectSong(navIds[navPos + 1]); });
+        nav.appendChild(prevBtn);
+        nav.appendChild(nextBtn);
+        stageEl.appendChild(nav);
+      }
+    }
+
     // Toolbar
     var toolbar = el("div", "toolbar");
 
@@ -1530,6 +1613,10 @@
     toolbar.appendChild(fontGroup);
 
     toolbar.appendChild(el("div", "toolbar-spacer"));
+
+    var addToListBtn = el("button", "text-btn", "Add to list");
+    addToListBtn.addEventListener("click", function () { openListModal(song.id); });
+    toolbar.appendChild(addToListBtn);
 
     var editBtn = el("button", "text-btn", "Edit");
     editBtn.addEventListener("click", function () {
@@ -1781,6 +1868,270 @@
     renderSyncStatus();
   }
 
+  // ---------- song lists (personal, stored on this device) ----------
+
+  function loadLists() {
+    try {
+      var raw = window.localStorage.getItem(LISTS_KEY);
+      var parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(function (l) { return l && l.id && Array.isArray(l.songIds); });
+    } catch (e) { return []; }
+  }
+
+  function saveLists() {
+    try { window.localStorage.setItem(LISTS_KEY, JSON.stringify(state.lists)); } catch (e) {}
+  }
+
+  function getList(id) {
+    return state.lists.find(function (l) { return l.id === id; }) || null;
+  }
+
+  function songExists(id) {
+    return state.songs.some(function (s) { return s.id === id; });
+  }
+
+  function listSongIds(list) {
+    return list.songIds.filter(songExists);
+  }
+
+  function createList(name) {
+    var list = {
+      id: "list-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+      name: name,
+      songIds: []
+    };
+    state.lists.push(list);
+    saveLists();
+    return list;
+  }
+
+  function toggleSongInList(listId, songId) {
+    var list = getList(listId);
+    if (!list) return;
+    var i = list.songIds.indexOf(songId);
+    if (i === -1) list.songIds.push(songId); else list.songIds.splice(i, 1);
+    saveLists();
+  }
+
+  function moveSongInList(listId, songId, delta) {
+    var list = getList(listId);
+    if (!list) return;
+    var ids = listSongIds(list);
+    var i = ids.indexOf(songId);
+    var j = i + delta;
+    if (i === -1 || j < 0 || j >= ids.length) return;
+    var tmp = ids[i]; ids[i] = ids[j]; ids[j] = tmp;
+    list.songIds = ids;
+    saveLists();
+  }
+
+  function deleteList(listId) {
+    state.lists = state.lists.filter(function (l) { return l.id !== listId; });
+    if (state.activeListId === listId) state.activeListId = null;
+    state.confirmDeleteListId = null;
+    saveLists();
+  }
+
+  function syncSidebarChrome() {
+    var inLists = state.sidebarTab === "lists";
+    document.getElementById("tabSongs").className = inLists ? "" : "active";
+    document.getElementById("tabLists").className = inLists ? "active" : "";
+    document.getElementById("searchRow").style.display = inLists ? "none" : "";
+    document.getElementById("newSongBtn").style.display = inLists ? "none" : "";
+    document.getElementById("newListBtn").style.display = (inLists && !state.activeListId) ? "" : "none";
+  }
+
+  function renderSongList() {
+    syncSidebarChrome();
+    if (state.sidebarTab === "lists") renderListsTab(); else renderSongsTab();
+  }
+
+  function renderListsTab() {
+    songListEl.innerHTML = "";
+
+    if (!state.activeListId) {
+      if (state.lists.length === 0) {
+        songListEl.appendChild(el("div", "empty-list",
+          "No lists yet. Make one for a gig, a service, or a practice session, then add songs to it from any song."));
+        return;
+      }
+      state.lists.forEach(function (list) {
+        var btn = el("button", "song-card");
+        btn.appendChild(el("div", "t", list.name || "Untitled list"));
+        var n = listSongIds(list).length;
+        btn.appendChild(el("div", "a", n + (n === 1 ? " song" : " songs")));
+        btn.addEventListener("click", function () {
+          state.activeListId = list.id;
+          state.confirmDeleteListId = null;
+          renderSongList();
+        });
+        songListEl.appendChild(btn);
+      });
+      return;
+    }
+
+    var list = getList(state.activeListId);
+    if (!list) { state.activeListId = null; renderSongList(); return; }
+
+    var head = el("div", "list-head");
+    var back = el("button", "text-btn", "\u2039 All lists");
+    back.style.alignSelf = "flex-start";
+    back.addEventListener("click", function () {
+      state.activeListId = null;
+      state.confirmDeleteListId = null;
+      renderSongList();
+      renderStage();
+    });
+    head.appendChild(back);
+    var nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "list-name-input";
+    nameInput.value = list.name || "";
+    nameInput.setAttribute("aria-label", "List name");
+    nameInput.addEventListener("change", function () {
+      var v = nameInput.value.trim();
+      list.name = v || "Untitled list";
+      saveLists();
+    });
+    head.appendChild(nameInput);
+    songListEl.appendChild(head);
+
+    var ids = listSongIds(list);
+    if (ids.length === 0) {
+      songListEl.appendChild(el("div", "empty-list",
+        "This list is empty. Open a song from the Songs tab and tap \u201cAdd to list\u201d."));
+    }
+    ids.forEach(function (id, idx) {
+      var song = state.songs.find(function (s) { return s.id === id; });
+      var row = el("div", "list-row");
+      var btn = el("button", "song-card" + (id === state.activeId ? " active" : ""));
+      btn.appendChild(el("div", "t", (idx + 1) + ". " + (song.title || "Untitled")));
+      if (song.artist) btn.appendChild(el("div", "a", song.artist));
+      btn.addEventListener("click", function () { selectSong(id); closeDrawer(); });
+      row.appendChild(btn);
+
+      var tools = el("div", "row-tools");
+      var up = el("button", null, "\u2191");
+      up.setAttribute("aria-label", "Move up");
+      up.disabled = idx === 0;
+      up.addEventListener("click", function () { moveSongInList(list.id, id, -1); renderSongList(); renderStage(); });
+      var down = el("button", null, "\u2193");
+      down.setAttribute("aria-label", "Move down");
+      down.disabled = idx === ids.length - 1;
+      down.addEventListener("click", function () { moveSongInList(list.id, id, 1); renderSongList(); renderStage(); });
+      var rm = el("button", null, "\u00d7");
+      rm.setAttribute("aria-label", "Remove from list");
+      rm.addEventListener("click", function () { toggleSongInList(list.id, id); renderSongList(); renderStage(); });
+      tools.appendChild(up); tools.appendChild(down); tools.appendChild(rm);
+      row.appendChild(tools);
+      songListEl.appendChild(row);
+    });
+
+    var foot = el("div", "list-foot");
+    if (state.confirmDeleteListId === list.id) {
+      var cr = el("span", "confirm-row");
+      cr.appendChild(document.createTextNode("Delete this list?"));
+      var yes = el("button", "text-btn danger", "Yes, delete");
+      yes.addEventListener("click", function () { deleteList(list.id); renderSongList(); renderStage(); });
+      var no = el("button", "text-btn", "Cancel");
+      no.addEventListener("click", function () { state.confirmDeleteListId = null; renderSongList(); });
+      cr.appendChild(yes); cr.appendChild(no);
+      foot.appendChild(cr);
+    } else {
+      var del = el("button", "text-btn danger", "Delete list");
+      del.addEventListener("click", function () { state.confirmDeleteListId = list.id; renderSongList(); });
+      foot.appendChild(del);
+    }
+    songListEl.appendChild(foot);
+  }
+
+  // "Add to list" panel opened from a song
+
+  var listModalScrim = document.getElementById("listModalScrim");
+  var listModalBody = document.getElementById("listModalBody");
+
+  function openListModal(songId) {
+    state.listModalSongId = songId;
+    renderListModal();
+    listModalScrim.classList.add("open");
+  }
+
+  function closeListModal() {
+    listModalScrim.classList.remove("open");
+    state.listModalSongId = null;
+    renderAll();
+  }
+
+  function renderListModal() {
+    var songId = state.listModalSongId;
+    listModalBody.innerHTML = "";
+
+    if (state.lists.length === 0) {
+      listModalBody.appendChild(el("div", "diagram-note",
+        "You don't have any lists yet. Name your first one below and this song goes straight in."));
+    }
+    state.lists.forEach(function (list) {
+      var row = el("label", "check-row");
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = list.songIds.indexOf(songId) !== -1;
+      box.addEventListener("change", function () {
+        toggleSongInList(list.id, songId);
+        renderSongList();
+      });
+      row.appendChild(box);
+      row.appendChild(el("span", null, list.name || "Untitled list"));
+      listModalBody.appendChild(row);
+    });
+
+    var newRow = el("div", "new-list-row");
+    var input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "New list name";
+    input.setAttribute("aria-label", "New list name");
+    var add = el("button", "btn primary", "Create");
+    function submit() {
+      var name = input.value.trim();
+      if (!name) { input.focus(); return; }
+      var list = createList(name);
+      toggleSongInList(list.id, songId);
+      renderListModal();
+      renderSongList();
+    }
+    add.addEventListener("click", submit);
+    input.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+    newRow.appendChild(input);
+    newRow.appendChild(add);
+    listModalBody.appendChild(newRow);
+  }
+
+  document.getElementById("listModalClose").addEventListener("click", closeListModal);
+  listModalScrim.addEventListener("click", function (e) {
+    if (e.target === listModalScrim) closeListModal();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && listModalScrim.classList.contains("open")) closeListModal();
+  });
+
+  // sidebar tabs + new list
+
+  document.getElementById("tabSongs").addEventListener("click", function () {
+    state.sidebarTab = "songs";
+    renderSongList();
+  });
+  document.getElementById("tabLists").addEventListener("click", function () {
+    state.sidebarTab = "lists";
+    renderSongList();
+  });
+  document.getElementById("newListBtn").addEventListener("click", function () {
+    var list = createList("List " + (state.lists.length + 1));
+    state.activeListId = list.id;
+    renderSongList();
+    var input = songListEl.querySelector(".list-name-input");
+    if (input) { input.focus(); input.select(); }
+  });
+
   // ---------- drawer (mobile) ----------
 
   var appEl = document.getElementById("app");
@@ -1845,6 +2196,7 @@
   // ---------- init ----------
 
   loadPrefs();
+  state.lists = loadLists();
   updateThemeLabel();
   renderAll();
   fetchAndSetSongs();
