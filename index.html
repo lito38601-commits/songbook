@@ -606,6 +606,15 @@
   }
   .new-list-row input:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
 
+  .auth-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 16px; border-top: 1px solid var(--rule);
+    font-size: 12.5px; color: var(--ink-faint); flex-shrink: 0;
+  }
+  .auth-row .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .auth-row .text-btn { flex-shrink: 0; }
+  .auth-error { min-height: 18px; font-size: 13px; color: var(--danger); }
+
   .chord-tag {
     all: unset;
     font-family: inherit;
@@ -825,6 +834,7 @@
     </div>
     <nav class="song-list" id="songList"></nav>
     <div class="sync-status" id="syncStatus" style="display:none;"></div>
+    <div class="auth-row" id="authRow"></div>
     <div class="install-row" id="installRow">
       <button class="install-btn" id="installBtn">&#8595; Install app on this phone</button>
     </div>
@@ -860,6 +870,22 @@
   </div>
   <div class="sl-progress"><div id="slBar"></div></div>
   <div class="sl-black"></div>
+</div>
+
+<div class="modal-scrim" id="authModalScrim">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+    <div class="modal-head">
+      <h2 id="authModalTitle">Editor sign in</h2>
+      <button class="modal-close" id="authModalClose" aria-label="Close">&times;</button>
+    </div>
+    <form class="modal-body" id="authForm">
+      <div class="diagram-note">Everyone can read, search, and present the hymns. Only approved editors can add, change, or delete them.</div>
+      <div class="field"><label for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="authPassword">Password</label><input id="authPassword" type="password" autocomplete="current-password" required></div>
+      <div class="auth-error" id="authError" role="alert"></div>
+      <button class="btn primary" type="submit" id="authSubmit">Sign in</button>
+    </form>
+  </div>
 </div>
 
 <div class="modal-scrim" id="listModalScrim">
@@ -960,6 +986,8 @@
     transpose: 0,
     fontSize: 16,
     showChords: true,
+    session: null,
+    isEditor: false,
     sidebarTab: "songs",
     lists: [],
     activeListId: null,
@@ -1014,7 +1042,7 @@
   }
 
   function flushPendingQueue() {
-    if (!db) return;
+    if (!db || !canEdit()) return;
     var queue = loadPendingQueue();
     if (queue.length === 0) return;
     var remaining = queue.slice();
@@ -1052,7 +1080,9 @@
         : "Offline \u2014 showing last synced copy";
       el2.style.display = "block";
     } else if (queue.length > 0) {
-      el2.textContent = "Syncing " + queue.length + " change" + (queue.length === 1 ? "" : "s") + "\u2026";
+      el2.textContent = canEdit()
+        ? "Syncing " + queue.length + " change" + (queue.length === 1 ? "" : "s") + "\u2026"
+        : queue.length + " change" + (queue.length === 1 ? "" : "s") + " waiting \u2014 sign in as an editor to sync";
       el2.style.display = "block";
     } else {
       el2.style.display = "none";
@@ -1070,6 +1100,132 @@
     renderSyncStatus();
   });
 
+  // ---------- editor sign-in (everyone else is read-only) ----------
+  // The buttons below are only a convenience. The real protection is in
+  // Supabase: its policies only accept writes from signed-in editors.
+
+  var EDITOR_KEY = "songbook:editor";
+
+  function canEdit() { return !!state.isEditor; }
+
+  function cachedEditorFlag(email) {
+    try { return window.localStorage.getItem(EDITOR_KEY) === (email || "").toLowerCase(); } catch (e) { return false; }
+  }
+
+  function setCachedEditorFlag(email) {
+    try {
+      if (email) window.localStorage.setItem(EDITOR_KEY, email.toLowerCase());
+      else window.localStorage.removeItem(EDITOR_KEY);
+    } catch (e) {}
+  }
+
+  function applyEditorState(isEditor) {
+    var changed = state.isEditor !== isEditor;
+    state.isEditor = isEditor;
+    if (!isEditor && state.mode === "edit") { state.mode = "view"; state.editingDraft = null; }
+    renderAll();
+    if (isEditor && changed) flushPendingQueue();
+  }
+
+  function checkEditor() {
+    var email = state.session && state.session.user && state.session.user.email;
+    if (!db || !email) { setCachedEditorFlag(null); applyEditorState(false); return; }
+    var q = null;
+    try { q = db.rpc("is_editor"); } catch (e) {}
+    if (!q || !q.then) { applyEditorState(cachedEditorFlag(email)); return; }
+    q.then(function (res) {
+      if (res && res.error) throw res.error;
+      var ok = !!(res && res.data === true);
+      setCachedEditorFlag(ok ? email : null);
+      applyEditorState(ok);
+    }).catch(function () {
+      // Offline or unreachable: trust the last answer we got for this account.
+      applyEditorState(cachedEditorFlag(email));
+    });
+  }
+
+  function initAuth() {
+    if (!db || !db.auth) return;
+    try {
+      db.auth.getSession().then(function (res) {
+        state.session = res && res.data ? res.data.session : null;
+        checkEditor();
+      }).catch(function () { checkEditor(); });
+      db.auth.onAuthStateChange(function (event, session) {
+        state.session = session;
+        setTimeout(checkEditor, 0);
+      });
+    } catch (e) {}
+  }
+
+  function signOutEditor() {
+    if (!db || !db.auth) return;
+    var done = function () { state.session = null; setCachedEditorFlag(null); applyEditorState(false); };
+    try { db.auth.signOut({ scope: "local" }).then(done, done); } catch (e) { done(); }
+  }
+
+  var authScrim = document.getElementById("authModalScrim");
+  var authForm = document.getElementById("authForm");
+  var authError = document.getElementById("authError");
+  var authSubmit = document.getElementById("authSubmit");
+
+  function openAuthModal() {
+    authError.textContent = "";
+    authScrim.classList.add("open");
+    setTimeout(function () { document.getElementById("authEmail").focus(); }, 0);
+  }
+
+  function closeAuthModal() {
+    authScrim.classList.remove("open");
+    document.getElementById("authPassword").value = "";
+  }
+
+  authForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!db || !db.auth) { authError.textContent = "Sign-in isn't available right now."; return; }
+    var email = document.getElementById("authEmail").value.trim();
+    var password = document.getElementById("authPassword").value;
+    if (!email || !password) return;
+    authSubmit.disabled = true;
+    authError.textContent = "";
+    var failed = function (msg) { authSubmit.disabled = false; authError.textContent = msg; };
+    db.auth.signInWithPassword({ email: email, password: password }).then(function (res) {
+      if (res && res.error) {
+        failed(/invalid|credentials/i.test(res.error.message || "")
+          ? "Wrong email or password."
+          : "Couldn't sign in. Check your connection and try again.");
+        return;
+      }
+      authSubmit.disabled = false;
+      closeAuthModal();
+    }).catch(function () { failed("Couldn't sign in. Check your connection and try again."); });
+  });
+  document.getElementById("authModalClose").addEventListener("click", closeAuthModal);
+  authScrim.addEventListener("click", function (e) { if (e.target === authScrim) closeAuthModal(); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && authScrim.classList.contains("open")) closeAuthModal();
+  });
+
+  function renderAuthRow() {
+    var row = document.getElementById("authRow");
+    if (!row) return;
+    row.innerHTML = "";
+    if (!db || !db.auth) { row.style.display = "none"; return; }
+    row.style.display = "";
+    var email = state.session && state.session.user && state.session.user.email;
+    if (email) {
+      row.appendChild(el("span", "who", state.isEditor ? "Editor: " + email : email + " (view only)"));
+      var out = el("button", "text-btn", "Sign out");
+      out.addEventListener("click", signOutEditor);
+      row.appendChild(out);
+    } else {
+      row.appendChild(el("span", "who", "View only"));
+      var inn = el("button", "text-btn", "Editor sign in");
+      inn.addEventListener("click", openAuthModal);
+      row.appendChild(inn);
+    }
+  }
+
   // ---------- shared storage (Supabase) ----------
 
   function fetchAndSetSongs() {
@@ -1083,8 +1239,8 @@
       .then(function (res) {
         if (res.error) throw res.error;
         var rows = res.data || [];
-        if (rows.length === 0) {
-          // First person to open the book — seed the two starter songs.
+        if (rows.length === 0 && canEdit()) {
+          // First editor to open the book — seed the two starter songs.
           // ignoreDuplicates means this is safe even if two people do it
           // at the same moment, and it never resurrects a song someone
           // deliberately deleted, since that only leaves the table with
@@ -1535,7 +1691,7 @@
     if (filtered.length === 0) {
       var empty = el("div", "empty-list",
         state.songs.length === 0
-          ? "No hymns yet. Add your first one to start the book."
+          ? (canEdit() ? "No hymns yet. Add your first one to start the book." : "No hymns yet.")
           : "Nothing matches that search.");
       songListEl.appendChild(empty);
       return;
@@ -1696,6 +1852,7 @@
     addToListBtn.addEventListener("click", function () { openListModal(song.id); });
     toolbar.appendChild(addToListBtn);
 
+    if (canEdit()) {
     var editBtn = el("button", "text-btn", "Edit");
     editBtn.addEventListener("click", function () {
       state.mode = "edit";
@@ -1721,6 +1878,7 @@
         renderStage();
       });
       toolbar.appendChild(deleteBtn);
+    }
     }
 
     stageEl.appendChild(toolbar);
@@ -1805,11 +1963,13 @@
     wrap.appendChild(el("div", null, state.songs.length ? "Pick a hymn from the list" : "No hymns yet"));
     wrap.appendChild(el("p", null,
       state.songs.length
-        ? "Choose a title on the left to see its chords, or add a new one."
-        : "Add your first hymn with lyrics and chords — you can transpose and resize it any time."));
-    var addBtn = el("button", null, "+ New hymn");
-    addBtn.addEventListener("click", startNewSong);
-    wrap.appendChild(addBtn);
+        ? (canEdit() ? "Choose a title on the left to see its chords, or add a new one." : "Choose a title on the left to see its chords and lyrics.")
+        : (canEdit() ? "Add your first hymn with lyrics and chords — you can transpose and resize it any time." : "Editors can sign in to add hymns.")));
+    if (canEdit()) {
+      var addBtn = el("button", null, "+ New hymn");
+      addBtn.addEventListener("click", startNewSong);
+      wrap.appendChild(addBtn);
+    }
     stageEl.appendChild(wrap);
   }
 
@@ -1921,6 +2081,7 @@
   }
 
   function startNewSong() {
+    if (!canEdit()) return;
     state.mode = "edit";
     state.editingDraft = {
       id: "song-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
@@ -1944,6 +2105,7 @@
     renderSongList();
     renderStage();
     renderSyncStatus();
+    renderAuthRow();
   }
 
   // ---------- song lists (personal, stored on this device) ----------
@@ -2016,7 +2178,7 @@
     document.getElementById("tabSongs").className = inLists ? "" : "active";
     document.getElementById("tabLists").className = inLists ? "active" : "";
     document.getElementById("searchRow").style.display = inLists ? "none" : "";
-    document.getElementById("newSongBtn").style.display = inLists ? "none" : "";
+    document.getElementById("newSongBtn").style.display = (inLists || !canEdit()) ? "none" : "";
     document.getElementById("newListBtn").style.display = (inLists && !state.activeListId) ? "" : "none";
   }
 
@@ -2610,6 +2772,7 @@
   renderAll();
   fetchAndSetSongs();
   subscribeRealtime();
+  initAuth();
 
   // Real caching service worker, so the app shell itself (this page,
   // the font stylesheet, the Supabase library) loads with no network
