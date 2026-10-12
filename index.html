@@ -529,7 +529,7 @@
     background: linear-gradient(#14110C, rgba(20, 17, 12, 0));
   }
   .sl-bottom {
-    bottom: 3px; justify-content: center; gap: 18px;
+    bottom: 3px; justify-content: center; gap: 14px; flex-wrap: wrap;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     background: linear-gradient(rgba(20, 17, 12, 0), #14110C);
   }
@@ -864,9 +864,11 @@
   </div>
   <div class="sl-stage" id="slStage"></div>
   <div class="sl-bottom">
+    <button class="sl-btn" id="slPrevHymn" aria-label="Previous hymn" style="display:none;">&#8249;&#8249; Hymn</button>
     <button class="sl-btn" id="slPrev" aria-label="Previous slide">&#8249;</button>
     <span class="sl-count" id="slCount"></span>
     <button class="sl-btn" id="slNext" aria-label="Next slide">&#8250;</button>
+    <button class="sl-btn" id="slNextHymn" aria-label="Next hymn" style="display:none;">Hymn &#8250;&#8250;</button>
   </div>
   <div class="sl-progress"><div id="slBar"></div></div>
   <div class="sl-black"></div>
@@ -2237,7 +2239,7 @@
     head.appendChild(nameInput);
     var presentIds = listSongIds(list);
     if (presentIds.length > 0) {
-      var presentList = el("button", "btn primary", "Present list");
+      var presentList = el("button", "btn primary", "\u25B6\uFE0E Play all");
       presentList.addEventListener("click", function () {
         startSlideshow(presentIds, presentIds[0]);
         closeDrawer();
@@ -2387,6 +2389,7 @@
   var slStage = document.getElementById("slStage");
   var slidesOpen = false;
   var deck = [];
+  var deckSongOrder = [];
   var cur = 0;
   var slideChords = false;
   var idleTimer = null;
@@ -2430,15 +2433,18 @@
 
   function startSlideshow(songIds, startSongId) {
     var built = [];
+    var order = [];
     var startIndex = 0;
     songIds.forEach(function (id) {
       var song = state.songs.find(function (s) { return s.id === id; });
       if (!song) return;
+      order.push(id);
       if (id === startSongId) startIndex = built.length;
       built = built.concat(buildSlidesForSong(song, id === state.activeId ? state.transpose : 0));
     });
     if (built.length === 0) return;
     deck = built;
+    deckSongOrder = order;
     cur = startIndex;
     slidesOpen = true;
     slideshowEl.classList.remove("blank");
@@ -2531,8 +2537,15 @@
     slStage.appendChild(wrap);
 
     var pos = vis.indexOf(cur);
-    document.getElementById("slSong").textContent = s.title;
-    document.getElementById("slCount").textContent = (pos + 1) + " / " + vis.length;
+    var multi = deckSongOrder.length > 1;
+    var hymnNo = deckSongOrder.indexOf(s.songId) + 1;
+    var inHymn = vis.filter(function (i) { return deck[i].songId === s.songId; });
+    document.getElementById("slSong").textContent = s.title + (multi ? "  (" + hymnNo + " of " + deckSongOrder.length + ")" : "");
+    document.getElementById("slCount").textContent = (inHymn.indexOf(cur) + 1) + " / " + inHymn.length;
+    var prevHymn = document.getElementById("slPrevHymn"), nextHymn = document.getElementById("slNextHymn");
+    prevHymn.style.display = nextHymn.style.display = multi ? "" : "none";
+    prevHymn.disabled = hymnNo <= 1 && inHymn.indexOf(cur) === 0;
+    nextHymn.disabled = hymnNo >= deckSongOrder.length;
     document.getElementById("slBar").style.width = (vis.length ? ((pos + 1) / vis.length) * 100 : 0) + "%";
     document.getElementById("slPrev").disabled = pos <= 0;
     document.getElementById("slNext").disabled = pos >= vis.length - 1;
@@ -2568,6 +2581,25 @@
     if (target === undefined) { wakeControls(); return; }
     cur = target;
     renderSlide();
+  }
+
+  // Jump to the next hymn, or back to the start of the current one.
+  function goHymn(delta) {
+    var s = deck[cur];
+    if (!s) return;
+    var vis = visibleIndices();
+    var firstOf = function (id) {
+      return vis.filter(function (i) { return deck[i].songId === id; })[0];
+    };
+    var target;
+    if (delta < 0 && cur !== firstOf(s.songId)) {
+      target = firstOf(s.songId);
+    } else {
+      var nextId = deckSongOrder[deckSongOrder.indexOf(s.songId) + delta];
+      if (nextId === undefined) { wakeControls(); return; }
+      target = firstOf(nextId);
+    }
+    if (target !== undefined) { cur = target; renderSlide(); }
   }
 
   function goEdge(last) {
@@ -2618,6 +2650,7 @@
     try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); } catch (e) {}
     leaveLandscape();
     deck = [];
+    deckSongOrder = [];
     if (endSongId && endSongId !== state.activeId && songExists(endSongId)) selectSong(endSongId);
   }
 
@@ -2644,6 +2677,8 @@
   bindSlideButton("slFull", toggleFullscreen);
   bindSlideButton("slClose", closeSlideshow);
   bindSlideButton("slPrev", function () { goSlide(-1); });
+  bindSlideButton("slPrevHymn", function () { goHymn(-1); });
+  bindSlideButton("slNextHymn", function () { goHymn(1); });
   bindSlideButton("slNext", function () { goSlide(1); });
 
   slideshowEl.addEventListener("click", function (e) {
@@ -2683,6 +2718,8 @@
     else if (k === "End") { e.preventDefault(); goEdge(true); }
     else if (k === "Escape") { closeSlideshow(); }
     else if (k === "f" || k === "F") { toggleFullscreen(); }
+    else if (k === "n" || k === "N") { goHymn(1); }
+    else if (k === "p" || k === "P") { goHymn(-1); }
     else if (k === "c" || k === "C") { toggleSlideChords(); }
     else if (k === "b" || k === "B" || k === ".") { slideshowEl.classList.toggle("blank"); }
     else return;
