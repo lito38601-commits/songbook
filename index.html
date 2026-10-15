@@ -118,7 +118,37 @@
     flex-direction: column;
     min-width: 0;
     height: 100%;
+    overflow: hidden;
   }
+
+  .sidebar-inner {
+    width: 280px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .side-handle {
+    position: fixed;
+    top: 50%;
+    left: 280px;
+    transform: translateY(-50%);
+    z-index: 8;
+    width: 20px;
+    height: 68px;
+    padding: 0;
+    background: var(--paper-raised);
+    color: var(--ink-faint);
+    border: 1px solid var(--rule);
+    border-left: none;
+    border-radius: 0 10px 10px 0;
+    font-size: 18px;
+    line-height: 1;
+    transition: left 0.3s ease, color 0.15s ease;
+  }
+  .side-handle:hover { color: var(--amber-deep); }
+  .side-handle:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
   .sidebar-head {
     padding: 20px 18px 14px;
@@ -459,7 +489,8 @@
     padding-bottom: 4px;
     border-bottom: 1px solid var(--rule);
   }
-  .section-label:first-child { margin-top: 0; }
+  .chart > .verse:first-child > .section-label:first-child { margin-top: 0; }
+  .verse { break-inside: avoid; }
 
   .blank-line { height: 0.9em; }
 
@@ -789,7 +820,26 @@
     color: var(--danger);
   }
 
+  /* Desktop and tablet: the hymn list can slide away to give the lyrics room. */
+  @media (min-width: 761px) {
+    .app { transition: grid-template-columns 0.3s ease; }
+    .app.side-hidden { grid-template-columns: 0 1fr; }
+    .app.side-hidden .sidebar { border-right-width: 0; visibility: hidden; transition: visibility 0s linear 0.3s; }
+    .app.side-hidden .side-handle { left: 0; }
+    .stage { transition: max-width 0.3s ease; }
+    .app.side-hidden .stage.wide { max-width: 1180px; }
+    .app.side-hidden .chart.cols { column-width: calc(var(--lyric-size) * 27); column-gap: 52px; }
+    .app.side-hidden .chart.cols .verse { margin-bottom: 26px; }
+    .app.side-hidden .chart.cols .verse > .blank-line { display: none; }
+    .app.side-hidden .chart.cols .section-label { margin-top: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .app, .stage, .side-handle { transition: none !important; }
+  }
+
   @media (max-width: 760px) {
+    .side-handle { display: none; }
+    .sidebar-inner { width: 100%; }
     .app { grid-template-columns: 1fr; }
     .sidebar {
       position: fixed;
@@ -816,6 +866,7 @@
   <div class="scrim" id="scrim"></div>
 
   <aside class="sidebar" id="sidebar">
+    <div class="sidebar-inner">
     <div class="sidebar-head">
       <div class="wordmark">
         <span class="glyph" aria-hidden="true"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#93590E"/><g transform="translate(256 205.6) scale(1.12) translate(-256 -256)"><path d="M256 228 C220 206 150 200 70 220 L70 396 C150 376 220 384 256 414 C292 384 362 376 442 396 L442 220 C362 200 292 206 256 228 Z" fill="#F0BE74"/><path d="M253 216 C220 194 152 188 84 206 L84 376 C152 360 220 368 253 396 Z" fill="#F4EFE3"/><path d="M259 216 C292 194 360 188 428 206 L428 376 C360 360 292 368 259 396 Z" fill="#F4EFE3"/><path d="M104 252 C150 239 205 243 238 261" stroke="#93590E" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/><path d="M274 261 C307 243 362 239 408 252" stroke="#93590E" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/><path d="M104 265 C150 252 205 256 238 274" stroke="#93590E" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/><path d="M274 274 C307 256 362 252 408 265" stroke="#93590E" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/><path d="M104 278 C150 265 205 269 238 287" stroke="#93590E" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/><path d="M274 287 C307 269 362 265 408 278" stroke="#93590E" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/><path d="M104 291 C150 278 205 282 238 300" stroke="#93590E" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/><path d="M274 300 C307 282 362 278 408 291" stroke="#93590E" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/><path d="M104 304 C150 291 205 295 238 313" stroke="#93590E" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/><path d="M274 313 C307 295 362 291 408 304" stroke="#93590E" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/><ellipse cx="128" cy="290" rx="9.3" ry="6.8" transform="rotate(-24 128 290)" fill="#6E4109"/><rect x="133.5" y="241.6" width="3.2" height="48.4" fill="#6E4109"/><ellipse cx="167" cy="277" rx="9.3" ry="6.8" transform="rotate(-24 167 277)" fill="#6E4109"/><rect x="172.5" y="228.6" width="3.2" height="48.4" fill="#6E4109"/><ellipse cx="206" cy="268" rx="9.3" ry="6.8" transform="rotate(-24 206 268)" fill="#6E4109"/><rect x="211.5" y="219.6" width="3.2" height="48.4" fill="#6E4109"/><ellipse cx="300" cy="268" rx="9.3" ry="6.8" transform="rotate(-24 300 268)" fill="#6E4109"/><rect x="305.5" y="219.6" width="3.2" height="48.4" fill="#6E4109"/><ellipse cx="342" cy="279" rx="9.3" ry="6.8" transform="rotate(-24 342 279)" fill="#6E4109"/><rect x="347.5" y="230.6" width="3.2" height="48.4" fill="#6E4109"/><ellipse cx="382" cy="290" rx="9.3" ry="6.8" transform="rotate(-24 382 290)" fill="#6E4109"/><rect x="387.5" y="241.6" width="3.2" height="48.4" fill="#6E4109"/><rect x="110" y="334" width="120" height="6" rx="3" fill="#93590E" opacity="0.45"/><rect x="282" y="334" width="120" height="6" rx="3" fill="#93590E" opacity="0.45"/><rect x="110" y="351" width="84" height="6" rx="3" fill="#93590E" opacity="0.45"/><rect x="282" y="351" width="96" height="6" rx="3" fill="#93590E" opacity="0.45"/></g></svg></span>
@@ -842,7 +893,10 @@
       <span id="themeLabel">Stage lights off</span>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode"><span class="dot"></span></button>
     </div>
+    </div>
   </aside>
+
+  <button class="side-handle" id="sideHandle" aria-controls="sidebar" aria-expanded="true" aria-label="Hide the hymn list" title="Hide the hymn list (press [ )"><span id="sideHandleIcon" aria-hidden="true">&#8249;</span></button>
 
   <main class="main" id="main">
     <div class="topbar">
@@ -917,6 +971,7 @@
   var THEME_KEY = "songbook:theme";
   var FONT_KEY = "songbook:fontsize";
   var CHORDS_KEY = "songbook:showchords";
+  var SIDE_KEY = "songbook:sidebar";
   var LISTS_KEY = "songbook:lists";
   var CACHE_KEY = "songbook:cache";
   var PENDING_KEY = "songbook:pending";
@@ -988,6 +1043,7 @@
     transpose: 0,
     fontSize: 16,
     showChords: true,
+    sideHidden: false,
     session: null,
     isEditor: false,
     sidebarTab: "songs",
@@ -1340,6 +1396,9 @@
     try {
       if (window.localStorage.getItem(CHORDS_KEY) === "off") state.showChords = false;
     } catch (e) {}
+    try {
+      if (window.localStorage.getItem(SIDE_KEY) === "hidden") state.sideHidden = true;
+    } catch (e) {}
   }
 
   function savePrefs() {
@@ -1348,6 +1407,7 @@
       window.localStorage.setItem(THEME_KEY, theme);
       window.localStorage.setItem(FONT_KEY, String(state.fontSize));
       window.localStorage.setItem(CHORDS_KEY, state.showChords ? "on" : "off");
+      window.localStorage.setItem(SIDE_KEY, state.sideHidden ? "hidden" : "shown");
     } catch (e) {}
   }
 
@@ -1728,11 +1788,13 @@
     document.documentElement.style.setProperty("--lyric-size", state.fontSize + "px");
 
     if (state.mode === "edit") {
+      stageEl.classList.remove("wide");
       renderEditor();
       return;
     }
 
     var song = getActiveSong();
+    stageEl.classList.toggle("wide", !!song);
     if (!song) {
       renderPlaceholder();
       return;
@@ -1886,16 +1948,24 @@
     stageEl.appendChild(toolbar);
 
     // Chart
-    var chart = el("div", "chart" + (state.showChords ? "" : " lyrics-only"));
+    var chart = el("div", "chart cols" + (state.showChords ? "" : " lyrics-only"));
     var lines = (song.body || "").split("\n");
+    // Each verse is wrapped in its own block so verses can sit side by side
+    // when the hymn list is hidden and there is room.
+    var verse = null, startNew = true;
+    function currentVerse() {
+      if (!verse || startNew) { verse = el("div", "verse"); chart.appendChild(verse); startNew = false; }
+      return verse;
+    }
     lines.forEach(function (raw) {
       var trimmed = raw.trim();
       if (trimmed.charAt(0) === "#") {
-        chart.appendChild(el("div", "section-label", trimmed.replace(/^#+\s*/, "")));
+        startNew = true;
+        currentVerse().appendChild(el("div", "section-label", trimmed.replace(/^#+\s*/, "")));
         return;
       }
       if (trimmed === "") {
-        chart.appendChild(el("div", "blank-line"));
+        if (verse && !startNew) { verse.appendChild(el("div", "blank-line")); startNew = true; }
         return;
       }
       var built = buildLine(raw, state.transpose);
@@ -1917,7 +1987,7 @@
         lineWrap.appendChild(chordRow);
       }
       lineWrap.appendChild(el("div", "lyric-row", built.lyric));
-      chart.appendChild(lineWrap);
+      currentVerse().appendChild(lineWrap);
     });
     stageEl.appendChild(chart);
   }
@@ -2740,6 +2810,36 @@
     if (slidesOpen && document.visibilityState === "visible") requestWake();
   });
 
+  // ---------- hide / show the hymn list (desktop and tablet) ----------
+
+  function applySidebar() {
+    document.getElementById("app").classList.toggle("side-hidden", state.sideHidden);
+    var h = document.getElementById("sideHandle");
+    h.setAttribute("aria-expanded", state.sideHidden ? "false" : "true");
+    var label = state.sideHidden ? "Show the hymn list" : "Hide the hymn list";
+    h.setAttribute("aria-label", label);
+    h.title = label + " (press [ )";
+    document.getElementById("sideHandleIcon").innerHTML = state.sideHidden ? "&#8250;" : "&#8249;";
+  }
+
+  function toggleSidebar() {
+    state.sideHidden = !state.sideHidden;
+    savePrefs();
+    applySidebar();
+  }
+
+  document.getElementById("sideHandle").addEventListener("click", function (e) {
+    toggleSidebar();
+    e.currentTarget.blur();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "[" || e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target, tag = t && t.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
+    if (slidesOpen) return;
+    toggleSidebar();
+  });
+
   // ---------- drawer (mobile) ----------
 
   var appEl = document.getElementById("app");
@@ -2804,6 +2904,7 @@
   // ---------- init ----------
 
   loadPrefs();
+  applySidebar();
   state.lists = loadLists();
   updateThemeLabel();
   renderAll();
